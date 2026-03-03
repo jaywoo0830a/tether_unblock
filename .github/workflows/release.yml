@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check version consistency
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/}"
+          PROP_VERSION=$(grep "^version=" module.prop | cut -d'=' -f2)
+          JSON_VERSION=$(python3 -c "import json; print(json.load(open('update.json'))['version'])")
+
+          echo "Tag version:         $TAG_VERSION"
+          echo "module.prop version: $PROP_VERSION"
+          echo "update.json version: $JSON_VERSION"
+
+          if [ "$TAG_VERSION" != "$PROP_VERSION" ]; then
+            echo "ERROR: tag ($TAG_VERSION) does not match module.prop ($PROP_VERSION)"
+            exit 1
+          fi
+          if [ "$TAG_VERSION" != "$JSON_VERSION" ]; then
+            echo "ERROR: tag ($TAG_VERSION) does not match update.json ($JSON_VERSION)"
+            exit 1
+          fi
+          echo "All versions match."
+
+      - name: Build zip
+        run: make zip
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: '*.zip'
