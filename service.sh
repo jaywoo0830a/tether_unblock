@@ -82,7 +82,9 @@ filter_hl_63()
 }
 
 
-settings put global tether_dun_required 0
+resetprop tether_dun_required 0
+resetprop net.tethering.noprovisioning true
+resetprop tether_entitlement_check_state 0
 
 if [ -x "$(command -v iptables)" ]
 then
