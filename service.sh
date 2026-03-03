@@ -1,115 +1,44 @@
 #!/system/bin/sh
 
-set_ttl_63()
-{
-	echo 63 > /proc/sys/net/ipv4/ip_default_ttl
-}
-
-set_hl_63()
-{
-	echo 63 > /proc/sys/net/ipv6/conf/all/hop_limit
-}
-
-filter_interface_ipv4()
-{
-	table="$1"
-	int="$2"
-
-	iptables -t filter -D OUTPUT  -o "$int" -j $table
-	iptables -t filter -D FORWARD -o "$int" -j $table
-
-	iptables -t filter -I OUTPUT  -o "$int" -j $table
-	iptables -t filter -I FORWARD -o "$int" -j $table
-}
-
-filter_interface_ipv6()
-{
-	table="$1"
-	int="$2"
-
-	ip6tables -t filter -D OUTPUT  -o "$int" -j $table
-	ip6tables -t filter -D FORWARD -o "$int" -j $table
-
-	ip6tables -t filter -I OUTPUT  -o "$int" -j $table
-	ip6tables -t filter -I FORWARD -o "$int" -j $table
-}
-
-setup_fwmark_routing()
-{
-	ip rule add fwmark 64 table 164 2>/dev/null
-	ip route add default dev lo table 164 2>/dev/null
-	ip route flush cache
-}
-
-filter_ttl_63()
-{
-	table="$1"
-
-	if grep -q ttl /proc/net/ip_tables_matches
-	then
-		iptables -t filter -N $table
-		iptables -t filter -F $table
-
-		iptables -t filter -A $table -m ttl --ttl-lt 63 -j REJECT
-		iptables -t filter -A $table -m ttl --ttl-eq 63 -j RETURN
-		iptables -t filter -A $table -j CONNMARK --set-mark 64
-
-		filter_interface_ipv4 $table 'rmnet_+'
-		filter_interface_ipv4 $table 'rev_rmnet_+'
-
-		setup_fwmark_routing
-	fi
-}
-
-filter_hl_63()
-{
-	table="$1"
-
-	if grep -q hl /proc/net/ip6_tables_matches
-	then
-		ip6tables -t filter -N $table
-		ip6tables -t filter -F $table
-
-		ip6tables -t filter -A $table -m hl --hl-lt 63 -j REJECT
-		ip6tables -t filter -A $table -m hl --hl-eq 63 -j RETURN
-		ip6tables -t filter -A $table -j CONNMARK --set-mark 64
-
-		filter_interface_ipv6 $table 'rmnet_+'
-		filter_interface_ipv6 $table 'rev_rmnet_+'
-
-		setup_fwmark_routing
-	fi
-}
-
-
+# Disable tethering detection properties.
 resetprop tether_dun_required 0
 resetprop net.tethering.noprovisioning true
 resetprop tether_entitlement_check_state 0
 
-if [ -x "$(command -v iptables)" ]
-then
-	if grep -q TTL /proc/net/ip_tables_targets
-	then
-		iptables -t mangle -A POSTROUTING -j TTL --ttl-set 64
-	else
-		set_ttl_63
-		filter_ttl_63 sort_out_interface
+# Wait for boot to complete before applying iptables rules,
+# since network interfaces may not be up yet.
+until [ "$(getprop sys.boot_completed)" = 1 ]; do
+	sleep 1
+done
+
+# Increment TTL/HL on tethering interfaces so that tethered traffic
+# appears to originate from this device.
+# Rules are added for all interfaces unconditionally — iptables matches
+# on interface name regardless of whether it exists yet, so rules will
+# take effect when tethering is enabled and the interface is created.
+# rndis0: USB tethering, wlan0/wlan1/ap0: Wi-Fi hotspot, bt-pan: Bluetooth.
+HAS_IPTABLES=false
+HAS_IP6TABLES=false
+[ -x "$(command -v iptables)" ] && HAS_IPTABLES=true
+[ -x "$(command -v ip6tables)" ] && HAS_IP6TABLES=true
+
+for IFACE in rndis0 wlan0 wlan1 ap0 bt-pan; do
+	if $HAS_IPTABLES; then
+		iptables  -t mangle -A PREROUTING  -i "$IFACE" -j TTL --ttl-inc 1
+		iptables  -t mangle -I POSTROUTING -o "$IFACE" -j TTL --ttl-inc 1
 	fi
-else
-	set_ttl_63
-fi
 
-
-if [ -x "$(command -v ip6tables)" ]
-then
-	if grep -q HL /proc/net/ip6_tables_targets
-	then
-		ip6tables -t mangle -A POSTROUTING -j HL --hl-set 64
-	else
-		set_hl_63
-		filter_hl_63 sort_out_interface
+	if $HAS_IP6TABLES; then
+		ip6tables -t mangle -A PREROUTING  ! -p icmpv6 -i "$IFACE" -j HL --hl-inc 1
+		ip6tables -t mangle -I POSTROUTING ! -p icmpv6 -o "$IFACE" -j HL --hl-inc 1
 	fi
-else
-	set_hl_63
-fi
+done
 
+# Fallback: if the kernel lacks TTL/HL iptables targets, set default
+# values via /proc so at least traffic from this device has correct values.
+if ! $HAS_IPTABLES || ! grep -q TTL /proc/net/ip_tables_targets 2>/dev/null; then
+	echo 64 > /proc/sys/net/ipv4/ip_default_ttl
+fi
+if ! $HAS_IP6TABLES || ! grep -q HL /proc/net/ip6_tables_targets 2>/dev/null; then
+	echo 64 > /proc/sys/net/ipv6/conf/all/hop_limit
+fi
