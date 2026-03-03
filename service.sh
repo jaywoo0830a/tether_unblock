@@ -34,6 +34,13 @@ filter_interface_ipv6()
 	ip6tables -t filter -I FORWARD -o "$int" -j $table
 }
 
+setup_fwmark_routing()
+{
+	ip rule add fwmark 64 table 164 2>/dev/null
+	ip route add default dev lo table 164 2>/dev/null
+	ip route flush cache
+}
+
 filter_ttl_63()
 {
 	table="$1"
@@ -50,9 +57,7 @@ filter_ttl_63()
 		filter_interface_ipv4 $table 'rmnet_+'
 		filter_interface_ipv4 $table 'rev_rmnet_+'
 
-		ip rule add fwmark 64 table 164
-		ip route add default dev lo table 164
-		ip route flush cache
+		setup_fwmark_routing
 	fi
 }
 
@@ -72,9 +77,7 @@ filter_hl_63()
 		filter_interface_ipv6 $table 'rmnet_+'
 		filter_interface_ipv6 $table 'rev_rmnet_+'
 
-		ip rule add fwmark 64 table 164
-		ip route add default dev lo table 164
-		ip route flush cache
+		setup_fwmark_routing
 	fi
 }
 
