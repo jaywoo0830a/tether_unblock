@@ -3,4 +3,4 @@ name=Tether Unblock
 version=v1
 versionCode=1
 author=Denis Efremov (@evdenis)
-description=Allows to bypass tethering blocking by mobile operators.
+description=Allows bypassing tethering blocking by mobile operators.
