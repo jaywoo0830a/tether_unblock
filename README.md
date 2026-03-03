@@ -7,7 +7,7 @@ provider.
 ## How to install:
 
 Stable release:
-1. Dowload latest tether_unblock.zip from releases page
+1. Download latest tether_unblock.zip from releases page
    https://github.com/evdenis/tether_unblock/releases
 2. MagiskManager -> Modules + Downloads/tether_unblock.zip -> Reboot
 
