@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run ShellCheck
+        run: shellcheck --shell=sh service.sh uninstall.sh
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build zip
+        run: make zip
+
+      - name: Verify zip was created
+        run: ls -l *.zip
+
+      - name: Check zip contains required files
+        run: |
+          ZIP=$(ls *.zip)
+          for f in module.prop service.sh uninstall.sh \
+                   META-INF/com/google/android/update-binary \
+                   META-INF/com/google/android/updater-script; do
+            if ! unzip -l "$ZIP" | grep -q "$f"; then
+              echo "ERROR: missing required file: $f"
+              exit 1
+            fi
+          done
+          echo "All required files present."
+
+      - name: Check zip does not contain unwanted files
+        run: |
+          ZIP=$(ls *.zip)
+          for f in CLAUDE.md update.json .git .github Makefile LICENSE; do
+            if unzip -l "$ZIP" | grep -q "$f"; then
+              echo "ERROR: zip contains unwanted file: $f"
+              exit 1
+            fi
+          done
+          echo "No unwanted files found."
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check module.prop has required fields
+        run: |
+          for field in id name version versionCode author description; do
+            if ! grep -q "^${field}=" module.prop; then
+              echo "ERROR: module.prop missing required field: $field"
+              exit 1
+            fi
+          done
+          echo "module.prop has all required fields."
+
+      - name: Validate update.json
+        run: python3 -m json.tool update.json > /dev/null
+
+      - name: Check update.json has required fields
+        run: |
+          for field in version versionCode zipUrl changelog; do
+            if ! python3 -c "import json,sys; d=json.load(open('update.json')); assert '$field' in d, 'missing $field'"; then
+              echo "ERROR: update.json missing required field: $field"
+              exit 1
+            fi
+          done
+          echo "update.json has all required fields."
