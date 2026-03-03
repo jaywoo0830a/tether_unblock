@@ -40,8 +40,8 @@ filter_ttl_63()
 
 	if grep -q ttl /proc/net/ip_tables_matches
 	then
-		iptables -t filter -F $table
 		iptables -t filter -N $table
+		iptables -t filter -F $table
 
 		iptables -t filter -A $table -m ttl --ttl-lt 63 -j REJECT
 		iptables -t filter -A $table -m ttl --ttl-eq 63 -j RETURN
@@ -62,8 +62,8 @@ filter_hl_63()
 
 	if grep -q hl /proc/net/ip6_tables_matches
 	then
-		ip6tables -t filter -F $table
 		ip6tables -t filter -N $table
+		ip6tables -t filter -F $table
 
 		ip6tables -t filter -A $table -m hl --hl-lt 63 -j REJECT
 		ip6tables -t filter -A $table -m hl --hl-eq 63 -j RETURN
