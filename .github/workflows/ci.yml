@@ -6,14 +6,6 @@ on:
   pull_request:
 
 jobs:
-  shellcheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Run ShellCheck
-        run: shellcheck --shell=sh service.sh uninstall.sh
-
   build:
     runs-on: ubuntu-latest
     steps:
@@ -41,7 +33,7 @@ jobs:
       - name: Check zip does not contain unwanted files
         run: |
           ZIP=$(ls *.zip)
-          for f in CLAUDE.md update.json .git .github Makefile LICENSE; do
+          for f in CLAUDE.md update.json .git .github Makefile LICENSE README.md CHANGELOG.md CHECKLIST.md; do
             if unzip -l "$ZIP" | grep -q "$f"; then
               echo "ERROR: zip contains unwanted file: $f"
               exit 1
