@@ -1,7 +1,7 @@
 id=tether_unblock
 name=Tether Unblock
-version=v2.0
-versionCode=2
+version=v2.1
+versionCode=3
 author=Denis Efremov (@evdenis)
 description=Allows bypassing tethering blocking by mobile operators.
 minMagisk=20400
