@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.4
+- Add `./tools/release.sh <version>` — fully automated release: auto-increments
+  versionCode, updates module.prop/update.json/CHANGELOG.md, runs tests, builds
+  zip, commits, tags, pushes, and creates GitHub release (gh CLI optional)
+- Add `make release` target (tests + zip build)
+- Add `tools/build_zip.py` for permanent Magisk zip compatibility
+
 ## v2.2.3
 - **Permanent fix**: replace `zip` command with `tools/build_zip.py` (Python
   `zipfile`) for full control over zip metadata — eliminates BusyBox `unzip`

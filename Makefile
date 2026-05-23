@@ -34,19 +34,18 @@ update:
 	curl -L https://raw.githubusercontent.com/topjohnwu/Magisk/master/scripts/module_installer.sh > META-INF/com/google/android/update-binary
 
 # Run tests, build the zip, and print release instructions.
+# For a fully automated GitHub release, use: ./tools/release.sh
 release: test $(ZIP)
 	@echo ""
 	@echo "========================================"
 	@echo " Release ready: $(ZIP)"
 	@echo "========================================"
 	@echo ""
-	@echo "Next steps:"
-	@echo "  1. git tag $(MODVER)"
-	@echo "  2. git push origin $(MODVER)"
-	@echo "  3. Go to: https://github.com/jaywoo0830a/tether_unblock/releases/new?tag=$(MODVER)"
-	@echo "  4. Upload $(ZIP) as a release asset"
-	@echo "  5. Publish release"
+	@echo "To complete the release:"
+	@echo "  ./tools/release.sh          (auto tag + push + GitHub release)"
 	@echo ""
-	@echo "Magisk will auto-detect the update via update.json."
+	@echo "Or manually:"
+	@echo "  git tag $(MODVER) && git push origin $(MODVER)"
+	@echo "  Upload $(ZIP) to: https://github.com/jaywoo0830a/tether_unblock/releases/new?tag=$(MODVER)"
 
 .PHONY: all zip install clean setup test update release
