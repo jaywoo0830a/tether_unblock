@@ -33,6 +33,18 @@ test:
 update:
 	curl -L https://raw.githubusercontent.com/topjohnwu/Magisk/master/scripts/module_installer.sh > META-INF/com/google/android/update-binary
 
+# Build and copy the zip to Windows desktop (WSL).
+desktop: $(ZIP)
+	@WIN_USER=$$(cmd.exe /c 'echo %USERNAME%' 2>/dev/null | tr -d '\r' || echo "$(USER)"); \
+	DESKTOP="/mnt/c/Users/$${WIN_USER}/Desktop"; \
+	if [ -d "$${DESKTOP}" ]; then \
+		cp $(ZIP) "$${DESKTOP}/"; \
+		echo "Copied $(ZIP) → $${DESKTOP}/"; \
+	else \
+		echo "ERROR: Desktop not found at $${DESKTOP}"; \
+		echo "Try setting DESKTOP_PATH manually."; \
+	fi
+
 # Run tests, build the zip, and print release instructions.
 # For a fully automated GitHub release, use: ./tools/release.sh
 release: test $(ZIP)
@@ -48,4 +60,4 @@ release: test $(ZIP)
 	@echo "  git tag $(MODVER) && git push origin $(MODVER)"
 	@echo "  Upload $(ZIP) to: https://github.com/jaywoo0830a/tether_unblock/releases/new?tag=$(MODVER)"
 
-.PHONY: all zip install clean setup test update release
+.PHONY: all zip install clean setup test update release desktop
