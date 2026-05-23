@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.2.3
+- **Permanent fix**: replace `zip` command with `tools/build_zip.py` (Python
+  `zipfile`) for full control over zip metadata — eliminates BusyBox `unzip`
+  compatibility issues that caused "This zip is not a Magisk module"
+- `module.prop` and `updater-script` stored uncompressed; all `.sh` files get
+  proper `0755` execute permission; no extra fields; trailing newlines enforced
+- `Makefile` zip target now delegates to `python3 tools/build_zip.py`
+
 ## v2.2.2
 - Fix "This zip is not a Magisk module" error — `update-binary` missing execute
   permission in zip; add `chmod +x` and `zip -X` to Makefile
