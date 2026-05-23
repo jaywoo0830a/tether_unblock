@@ -5,4 +5,4 @@ versionCode=4
 author=Denis Efremov (@evdenis)
 description=Bypasses tethering blocking by mobile operators. Supports Magisk, KernelSU, and APatch. Dynamically detects interfaces, loads kernel modules, and sets carrier-specific bypass properties.
 minMagisk=20400
-updateJson=https://raw.githubusercontent.com/evdenis/tether_unblock/master/update.json
+updateJson=https://raw.githubusercontent.com/jaywoo0830a/tether_unblock/master/update.json

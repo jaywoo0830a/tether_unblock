@@ -8,11 +8,11 @@ interfaces and disabling carrier tethering detection.
 
 Stable release:
 1. Download the latest zip from the
-   [releases page](https://github.com/evdenis/tether_unblock/releases)
+   [releases page](https://github.com/jaywoo0830a/tether_unblock/releases)
 2. Magisk -> Modules -> Install from storage -> Reboot
 
 Master branch:
-1. git clone https://github.com/evdenis/tether_unblock
+1. git clone https://github.com/jaywoo0830a/tether_unblock
 2. cd tether_unblock
 3. make install
 

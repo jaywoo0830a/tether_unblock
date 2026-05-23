@@ -57,6 +57,53 @@ if echo "${STAGED}" | grep -q '^META-INF/com/google/android/updater-script$'; th
     fi
 fi
 
+# --- common.sh sourcing check (service.sh, uninstall.sh) ---
+for consumer in service.sh uninstall.sh; do
+    if echo "${STAGED}" | grep -q "^${consumer}\$"; then
+        if git show ":${consumer}" | grep -q 'common\.sh'; then
+            printf "[OK]   %s sources common.sh\n" "${consumer}"
+        else
+            printf "[FAIL] %s must source common.sh\n" "${consumer}"
+            ERRORS=$((ERRORS + 1))
+        fi
+    fi
+done
+
+# --- DRY check: no duplicate function definitions ---
+# Functions defined in common.sh must not be redefined in service.sh or
+# uninstall.sh (except log() which uninstall.sh intentionally overrides).
+if echo "${STAGED}" | grep -qE '^(common\.sh|service\.sh|uninstall\.sh)$'; then
+    COMMON_FUNCS=$(git show :common.sh | grep '^[a-z_]*()' | sed 's/().*//' | grep -v '^log$')
+    for consumer in service.sh uninstall.sh; do
+        for fn in ${COMMON_FUNCS}; do
+            if git show ":${consumer}" 2>/dev/null | grep -q "^${fn}()"; then
+                printf "[FAIL] %s redefines %s() — should use common.sh version\n" \
+                    "${consumer}" "${fn}"
+                ERRORS=$((ERRORS + 1))
+            fi
+        done
+    done
+    if [ "${ERRORS}" -eq "${ERRORS_BEFORE_DRY:-0}" ]; then
+        printf "[OK]   No duplicate function definitions (DRY)\n"
+    fi
+    ERRORS_BEFORE_DRY=${ERRORS}
+fi
+
+# --- shebang & indentation convention ---
+STAGED_SH_ALL=$(echo "${STAGED}" | grep '\.sh$')
+for f in ${STAGED_SH_ALL}; do
+    # .sh files must have a shebang
+    if ! git show ":${f}" | head -n1 | grep -q '^#!/'; then
+        printf "[FAIL] %s missing shebang (first line must start with #!)\n" "${f}"
+        ERRORS=$((ERRORS + 1))
+    fi
+    # Use tabs for indentation, not spaces (except comments/heredocs)
+    if git show ":${f}" | grep -nP '^    [a-zA-Z]' >/dev/null 2>&1; then
+        printf "[FAIL] %s uses spaces for indentation — please use tabs\n" "${f}"
+        ERRORS=$((ERRORS + 1))
+    fi
+done
+
 if [ "${ERRORS}" -gt 0 ]; then
     printf "\nPre-commit hook failed with %d error(s)\n" "${ERRORS}"
     exit 1
