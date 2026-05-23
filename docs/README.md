@@ -4,7 +4,7 @@
 
 | Document | Description |
 |---|---|
-| [Detection Methods](detection-methods.md) | How mobile carriers detect tethering — TTL/HL, DUN, HTTP inspection, TCP fingerprinting, provisioning, hardware offload |
+| [Detection Methods](detection-methods.md) | OSI 7-layer breakdown: how carriers detect tethering at each layer (Layer 3 TTL/HL, Layer 4 TCP fingerprinting, Layer 7 DPI/DNS/SNI) and how the module counters each — with recommended defense-in-depth strategy |
 | [Manufacturer & Carrier Guide](manufacturer-guide.md) | Device-specific behaviors (Pixel, Samsung, Xiaomi, OnePlus, etc.) and carrier-specific bypass strategies (T-Mobile, AT&T, Verizon, Korean/European/Japanese carriers) |
 
 ## Quick Reference

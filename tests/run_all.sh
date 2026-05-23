@@ -174,14 +174,10 @@ for iface in rndis0 wlan0 ap0 bt-pan; do
 		"static fallback includes interface: ${iface}"
 done
 
-# iptables rules should cover both IPv4 and IPv6
-run_test "service.sh has iptables  PREROUTING  rule"  "grep -q 'iptables.*PREROUTING'  service.sh"
-run_test "service.sh has iptables  POSTROUTING rule"  "grep -q 'iptables.*POSTROUTING' service.sh"
-run_test "service.sh has ip6tables PREROUTING  rule"  "grep -q 'ip6tables.*PREROUTING'  service.sh"
-run_test "service.sh has ip6tables POSTROUTING rule"  "grep -q 'ip6tables.*POSTROUTING' service.sh"
-
 # Should handle ICMPv6 exclusion (preserve neighbor discovery)
-run_test "ip6tables excludes ICMPv6" "grep -q '! -p icmpv6' service.sh"
+run_test "nftables excludes ICMPv6 (nexthdr != ipv6-icmp)" "grep -q 'ipv6-icmp' service.sh"
+run_test "nftables uses ip ttl set" "grep -q 'ip ttl set ip ttl' service.sh"
+run_test "nftables uses ip6 hoplimit set" "grep -q 'ip6 hoplimit set ip6 hoplimit' service.sh"
 
 # ============================================================
 banner "=== 6. Pixel / hardware offload support ==="
@@ -205,10 +201,10 @@ run_test "VPN config file referenced in scripts" \
 	"grep -q 'tether_unblock_vpn.conf' common.sh"
 
 run_test "service.sh has FORWARD rules for VPN" \
-	"grep -q 'FORWARD' service.sh && grep -q 'VPN_IFACE' service.sh"
+	"grep -q 'nft_add_rule inet forward' service.sh"
 
-run_test "service.sh has MASQUERADE for VPN" \
-	"grep -q 'MASQUERADE' service.sh"
+run_test "service.sh has masquerade for VPN" \
+	"grep -q 'masquerade' service.sh"
 
 run_test "service.sh has VPN_NO_IPV6 support" \
 	"grep -q 'VPN_NO_IPV6' service.sh"
@@ -219,8 +215,8 @@ run_test "sample VPN config exists" \
 run_test "sample config documents options" \
 	"grep -q 'VPN_INTERFACE\|VPN_NO_IPV6' tether_unblock_vpn.conf.sample"
 
-run_test "add_rule supports -t table override" \
-	"grep -q 'table=' common.sh"
+run_test "common.sh has nft_init table creation" \
+	"grep -q 'nft add table inet' common.sh"
 
 # ============================================================
 banner "=== 8. Enhanced logging ==="
@@ -237,14 +233,14 @@ run_test "common.sh has system info dump" \
 run_test "common.sh logs kernel version" \
 	"grep -q 'uname -r' common.sh"
 
-run_test "service.sh captures iptables BEFORE state" \
-	"grep -q 'dump_iptables_state.*BEFORE' service.sh"
+run_test "service.sh captures nftables BEFORE state" \
+	"grep -q 'dump_nftables_state.*BEFORE' service.sh"
 
-run_test "service.sh captures iptables AFTER state" \
-	"grep -q 'dump_iptables_state.*AFTER' service.sh"
+run_test "service.sh captures nftables AFTER state" \
+	"grep -q 'dump_nftables_state.*AFTER' service.sh"
 
-run_test "common.sh has iptables state dump function" \
-	"grep -q 'dump_iptables_state' common.sh"
+run_test "common.sh has nftables state dump function" \
+	"grep -q 'dump_nftables_state' common.sh"
 
 run_test "config supports LOG_LEVEL option" \
 	"grep -q 'LOG_LEVEL' common.sh"
@@ -254,6 +250,30 @@ run_test "common.sh has log rotation (tail -n 200)" \
 
 run_test "failed module loads generate WARN" \
 	"grep -q 'WARN.*module not found' service.sh"
+
+# ============================================================
+banner "=== 8. nftables support ==="
+
+run_test "common.sh has detect_nftables function" \
+	"grep -q 'detect_nftables()' common.sh"
+
+run_test "common.sh has nft_init function" \
+	"grep -q 'nft_init()' common.sh"
+
+run_test "service.sh prefers nftables over iptables" \
+	"grep -q 'HAS_NFTABLES' service.sh"
+
+run_test "nftables TTL uses ip ttl set" \
+	"grep -q 'ip ttl set ip ttl' service.sh"
+
+run_test "nftables HL uses ip6 hoplimit" \
+	"grep -q 'ip6 hoplimit set ip6 hoplimit' service.sh"
+
+run_test "nftables excludes ICMPv6 (nexthdr != ipv6-icmp)" \
+	"grep -q 'ipv6-icmp' service.sh"
+
+run_test "uninstall.sh cleans nftables tables" \
+	"grep -q 'nft delete table' uninstall.sh"
 
 # ============================================================
 banner "=== 9. Unit tests (mocked environment) ==="

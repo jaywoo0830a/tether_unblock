@@ -3,7 +3,7 @@
 # Source this from service.sh, uninstall.sh, or any module script.
 #
 # Provides: logging, resetprop detection, property helpers,
-#           iptables rule helpers, interface detection, module loading.
+#           nftables rule helpers, interface detection, module loading.
 #
 # Requires: LOG_TAG, LOG_FILE, LOG_LEVEL are set before or after sourcing.
 
@@ -108,13 +108,11 @@ load_mod() {
 	return 1
 }
 
-# ---- iptables tool detection ----
-detect_iptables() {
-	HAS_IPTABLES=false
-	HAS_IP6TABLES=false
-	command -v iptables  >/dev/null 2>&1 && HAS_IPTABLES=true
-	command -v ip6tables >/dev/null 2>&1 && HAS_IP6TABLES=true
-	log "INFO" "iptables: ${HAS_IPTABLES}  ip6tables: ${HAS_IP6TABLES}"
+# ---- nftables detection ----
+detect_nftables() {
+	HAS_NFTABLES=false
+	command -v nft >/dev/null 2>&1 && HAS_NFTABLES=true
+	log "INFO" "nftables: ${HAS_NFTABLES}"
 }
 
 # ---- dynamic interface detection ----
@@ -132,36 +130,78 @@ detect_interfaces() {
 # Static fallback covering many devices.
 FALLBACK_INTERFACES="rndis0 wlan0 wlan1 ap0 bt-pan swlan0 usb0 eth0 ncm0"
 
-# ---- iptables rule helper ----
-# Usage: add_rule <bin> <chain> [-t <table>] <rule args...>
-# Default table: mangle.  Uses -C to check before adding (dedup-safe)
-# and -w to wait for xtables lock.
-add_rule() {
-	local bin="$1"; shift
-	local chain="$1"; shift
-	local table="mangle"
+# ---- nftables support ----
+# Modern Android (12+) ships nftables as the primary firewall framework.
+# nftables replaces legacy {iptables,ip6tables} with a single unified tool.
 
-	if [ "$1" = "-t" ]; then
-		table="$2"; shift 2
-	fi
-
-	if "${bin}" -w -t "${table}" -C "${chain}" "$@" 2>/dev/null; then
-		return 0  # rule already exists
-	fi
-	"${bin}" -w -t "${table}" -A "${chain}" "$@" 2>/dev/null && \
-		log "INFO" "  ${bin} -t ${table} -A ${chain} $*" || \
-		log "ERROR" "  ${bin} -t ${table} -A ${chain} $*  -- FAILED"
+detect_nftables() {
+	HAS_NFTABLES=false
+	command -v nft >/dev/null 2>&1 && HAS_NFTABLES=true
+	log "INFO" "nftables: ${HAS_NFTABLES}"
 }
 
-# ---- iptables state dump (DEBUG level) ----
-dump_iptables_state() {
-	local label="$1"  # "BEFORE" or "AFTER"
-	log "DEBUG" "--- iptables mangle (${label}) ---"
-	iptables -t mangle -L -n 2>/dev/null | while IFS= read -r line; do
+# Initialise the tether_unblock nftables table (idempotent).
+# Called once before adding any rules.
+nft_init() {
+	# Delete our table if it already exists (fresh start each boot).
+	nft delete table inet tether_unblock 2>/dev/null || true
+	nft delete table ip tether_unblock_nat 2>/dev/null || true
+
+	# Main table (inet = IPv4 + IPv6 combined, for mangle & filter)
+	nft add table inet tether_unblock
+	nft add chain inet tether_unblock prerouting \
+		'{ type filter hook prerouting priority mangle; }'
+	nft add chain inet tether_unblock postrouting \
+		'{ type filter hook postrouting priority mangle; }'
+	nft add chain inet tether_unblock forward \
+		'{ type filter hook forward priority filter; }'
+
+	# NAT tables (must be ip/ip6 families, not inet)
+	nft add table ip tether_unblock_nat
+	nft add chain ip tether_unblock_nat postrouting \
+		'{ type nat hook postrouting priority srcnat; }'
+
+	log "INFO" "nftables: initialised"
+}
+
+# Add an nftables rule to a chain.
+# Usage: nft_add_rule <family> <chain> <rule...>
+#   family: inet | ip | ip6
+#   chain:  prerouting | postrouting | forward
+nft_add_rule() {
+	local family="$1"; shift
+	local chain="$1"; shift
+
+	if nft add rule "${family}" tether_unblock "${chain}" "$@" 2>/dev/null; then
+		log "INFO" "  nft ${family} ${chain} $*"
+	else
+		log "ERROR" "  nft ${family} ${chain} $*  -- FAILED"
+	fi
+}
+
+# Add a NAT rule (uses the separate nat table).
+nft_add_nat_rule() {
+	local family="$1"; shift
+
+	if nft add rule "${family}" tether_unblock_nat postrouting "$@" 2>/dev/null; then
+		log "INFO" "  nft ${family} nat postrouting $*"
+	else
+		log "ERROR" "  nft ${family} nat postrouting $*  -- FAILED"
+	fi
+}
+
+# Dump nftables ruleset for DEBUG logging.
+dump_nftables_state() {
+	local label="$1"
+	log "DEBUG" "--- nftables ruleset (${label}) ---"
+	nft list ruleset 2>/dev/null | while IFS= read -r line; do
 		log "DEBUG" "  ${line}"
 	done
-	log "DEBUG" "--- iptables nat (${label}) ---"
-	iptables -t nat -L -n 2>/dev/null | while IFS= read -r line; do
-		log "DEBUG" "  ${line}"
-	done
+}
+
+# Clean up nftables rules on uninstall.
+nft_teardown() {
+	nft delete table inet tether_unblock 2>/dev/null || true
+	nft delete table ip tether_unblock_nat 2>/dev/null || true
+	log "INFO" "nftables: cleaned up"
 }

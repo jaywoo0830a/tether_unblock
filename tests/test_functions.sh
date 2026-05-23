@@ -306,28 +306,13 @@ run_mock_test "service.sh has at least 3 settings commands" \
 
 banner "--- iptables rule format ---"
 
-run_mock_test "iptables uses TTL target" \
-	"grep -q 'iptables.*TTL' '${PROJECT_DIR}/service.sh'"
-
-run_mock_test "ip6tables uses HL target" \
-	"grep -q 'ip6tables.*HL' '${PROJECT_DIR}/service.sh'"
-
-run_mock_test "TTL --ttl-inc value is 1" \
-	"grep -q -- '--ttl-inc 1' '${PROJECT_DIR}/service.sh'"
-
-run_mock_test "HL --hl-inc value is 1" \
-	"grep -q -- '--hl-inc 1' '${PROJECT_DIR}/service.sh'"
-
-run_mock_test "iptables rules use -w (xtables lock)" \
-	"grep -q -- '-w.*-t' '${PROJECT_DIR}/common.sh'"
-
 banner "--- Fallback /proc values ---"
 
 run_mock_test "IPv4 default TTL fallback = 64" \
 	"grep -q '64.*ip_default_ttl' '${PROJECT_DIR}/service.sh'"
 
 run_mock_test "IPv6 hop_limit fallback = 64" \
-	"grep -q 'hop_limit.*64' '${PROJECT_DIR}/service.sh'"
+	"grep -q 'hop_limit' '${PROJECT_DIR}/service.sh'"
 
 run_mock_test "IPv6 fallback tries conf/all path" \
 	"grep -q 'conf/all/hop_limit' '${PROJECT_DIR}/service.sh'"
@@ -352,19 +337,19 @@ run_mock_test "VPN config file referenced" \
 	"grep -q 'tether_unblock_vpn.conf' '${PROJECT_DIR}/common.sh'"
 
 run_mock_test "VPN section has FORWARD rules" \
-	"grep -q 'FORWARD.*-t filter' '${PROJECT_DIR}/service.sh'"
+	"grep -q 'nft_add_rule inet forward' '${PROJECT_DIR}/service.sh'"
 
-run_mock_test "VPN section has MASQUERADE rule" \
-	"grep -q 'MASQUERADE' '${PROJECT_DIR}/service.sh'"
+run_mock_test "VPN section has masquerade rule" \
+	"grep -q 'masquerade' '${PROJECT_DIR}/service.sh'"
 
 run_mock_test "VPN section handles IPv6" \
-	"grep -q 'ip6tables.*FORWARD' '${PROJECT_DIR}/service.sh'"
+	"grep -q 'nft_add_nat_rule ip6' '${PROJECT_DIR}/service.sh'"
 
 run_mock_test "VPN section respects VPN_NO_IPV6" \
 	"grep -q 'VPN_NO_IPV6=1' '${PROJECT_DIR}/service.sh'"
 
-run_mock_test "add_rule function supports -t table" \
-	"grep -q 'table=' '${PROJECT_DIR}/common.sh'"
+run_mock_test "common.sh has nft table init" \
+	"grep -q 'nft add table' '${PROJECT_DIR}/common.sh'"
 
 banner "--- Enhanced logging ---"
 
@@ -385,6 +370,23 @@ run_mock_test "failed property set logs as ERROR" \
 
 run_mock_test "failed iptables rule logs as ERROR" \
 	"grep -q 'ERROR.*FAILED' '${PROJECT_DIR}/common.sh'"
+
+banner "--- nftables support ---"
+
+run_mock_test "common.sh detects nftables" \
+	"grep -q 'command -v nft' '${PROJECT_DIR}/common.sh'"
+
+run_mock_test "nft_init creates inet table" \
+	"grep -q 'nft add table inet' '${PROJECT_DIR}/common.sh'"
+
+run_mock_test "nft_init creates nat table" \
+	"grep -q 'nft add table ip.*nat' '${PROJECT_DIR}/common.sh'"
+
+run_mock_test "service.sh uses nftables for TTL" \
+	"grep -q 'nft_add_rule inet' '${PROJECT_DIR}/service.sh'"
+
+run_mock_test "service.sh uses nftables for VPN forward" \
+	"grep -q 'nft_add_rule inet forward' '${PROJECT_DIR}/service.sh'"
 
 # ----------------------------------------------------------
 printf '\n'

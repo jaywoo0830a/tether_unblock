@@ -4,6 +4,25 @@
 
 # Changelog
 
+## v2.2.7
+- **Drop iptables entirely** — nftables only (Android 12+)
+- Rewrite `docs/detection-methods.md` using OSI 7-layer model: Layer 3
+  (TTL/HL, DUN APN), Layer 4 (TCP fingerprinting), Layer 7 (HTTP DPI, SNI,
+  DNS), Android Framework (provisioning, hardware offload, OEM properties)
+- Remove `detect_iptables()`, `add_rule()`, `dump_iptables_state()`,
+  `HAS_IPTABLES`/`HAS_IP6TABLES` variables from common.sh
+- Service script: single nftables code path, no legacy branching
+- /proc fallback kept as safety net only
+
+## v2.2.6
+- **Migrate to nftables** (preferred) with iptables fallback — nftables provides
+  atomic rule replacement, unified IPv4/IPv6 handling (inet family), and better
+  performance on Android 12+ kernels
+- `detect_nftables()`, `nft_init()`, `nft_add_rule()`, `nft_add_nat_rule()`,
+  `dump_nftables_state()`, `nft_teardown()` added to common.sh
+- VPN passthrough also uses nftables when available (forward + masquerade)
+- `uninstall.sh` now cleans up nftables tables on removal
+
 ## v2.2.4
 - Add `./tools/release.sh <version>` — fully automated release: auto-increments
   versionCode, updates module.prop/update.json/CHANGELOG.md, runs tests, builds

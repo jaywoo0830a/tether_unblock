@@ -1,233 +1,252 @@
-# Tethering Detection Methods
+# Tethering Detection & Bypass — OSI 7-Layer Model
 
-Mobile carriers use multiple techniques to detect whether you're tethering.
-Understanding these is essential for effective bypass.
+Mobile carriers detect tethering by inspecting traffic at multiple layers of the
+OSI stack.  This document maps every known detection method to its OSI layer and
+explains how this module counters each one.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  LAYER 7  Application   HTTP User-Agent DPI, SNI inspection  │
+│                          DNS pattern analysis                │
+│                          → VPN (WireGuard) defeats this      │
+├─────────────────────────────────────────────────────────────┤
+│  LAYER 4  Transport     TCP stack fingerprinting (p0f)      │
+│                          TCP window / options / TTL          │
+│                          → TTL normalization + VPN defeats   │
+├─────────────────────────────────────────────────────────────┤
+│  LAYER 3  Network       TTL / Hop Limit analysis ← PRIMARY  │
+│                          DUN APN routing                     │
+│                          → nftables TTL/HL +1 bypasses both  │
+├─────────────────────────────────────────────────────────────┤
+│  LAYER 2  Data Link     MAC address                         │
+│                          → Not used by carriers              │
+├─────────────────────────────────────────────────────────────┤
+│  ANDROID  Framework     TetheringProvisioning / entitlement  │
+│                          Hardware offload (IPA / Tensor)     │
+│                          → resetprop + settings bypass       │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 1. TTL / Hop Limit Analysis (Primary Method)
+## Layer 3 — Network Layer
 
-### How It Works
+This is where **90% of carrier tethering detection happens**.
 
-Every IP packet carries a **Time-To-Live (TTL)** field (IPv4) or **Hop Limit** (IPv6).
-Each router along the path decrements this value by 1.
+### TTL / Hop Limit Analysis (Primary Detection Method)
+
+Every IP packet carries a **Time-To-Live (TTL)** field (IPv4) or **Hop Limit**
+(IPv6).  Each router along the path decrements this value by 1.  The carrier's
+**PGW (PDN Gateway)** inspects the incoming TTL.
 
 ```
-Normal phone traffic:
-  Phone ──────────────────────→ Carrier
+Phone-only traffic:
+  Phone ──────────────────────→ Carrier PGW
   TTL=64                        Sees TTL=64 ✓
 
 Tethered traffic:
-  Laptop ────→ Phone ────→ Carrier
-  TTL=64       TTL=63      Sees TTL=63 ✗  ← "63" reveals one extra hop
+  Laptop ────→ Phone(router) ────→ Carrier PGW
+  TTL=64       TTL=63             Sees TTL=63 ✗  ← "63" = one extra hop
 ```
 
-The carrier's **PGW (PDN Gateway)** or **GGSN** inspects the TTL of incoming
-packets. If the TTL is one less than the expected device TTL (typically 64),
-they know there's a router (your phone) between the device and the carrier.
+**Default TTL values by OS:**
 
-### Default TTL Values by OS
-
-| OS | Default TTL | Carrier Sees |
+| OS | Default TTL | After phone decrement |
 |---|---|---|
-| Android / Linux | 64 | 64 (normal) |
-| iOS / macOS | 64 | 64 (normal) |
-| Windows | 128 | 127 (detectable) |
-| tethered → decremented | -1 | 63 or 127 (detectable) |
+| Android / Linux | 64 | 63 (flagged) |
+| iOS / macOS | 64 | 63 (flagged) |
+| Windows | 128 | 127 (flagged, also reveals Windows) |
 
-### IPv6 Hop Limit
+#### Countermeasure (nftables)
 
-The same principle applies to IPv6. The `Hop Limit` field is decremented
-identically. Some carriers specifically check IPv6 because it's harder to
-manipulate (fewer tools support `ip6tables` compared to `iptables`).
-
-### Bypass Strategy
-
-Increment TTL/HL by 1 on all tethering interfaces:
+Increment TTL by 1 on all tethering interfaces so the carrier sees the same TTL
+as if the packet originated on the phone itself:
 
 ```sh
-# IPv4
-iptables -t mangle -A PREROUTING  -i $IFACE -j TTL --ttl-inc 1
-iptables -t mangle -A POSTROUTING -o $IFACE -j TTL --ttl-inc 1
+# IPv4 — nftables inet family
+nft add rule inet tether_unblock prerouting  iifname rndis0 ip ttl set ip ttl + 1
+nft add rule inet tether_unblock postrouting oifname rndis0 ip ttl set ip ttl + 1
 
-# IPv6 (exclude ICMPv6 — preserves Neighbor Discovery)
-ip6tables -t mangle -A PREROUTING  ! -p icmpv6 -i $IFACE -j HL --hl-inc 1
-ip6tables -t mangle -A POSTROUTING ! -p icmpv6 -o $IFACE -j HL --hl-inc 1
+# IPv6 — same, with ICMPv6 exclusion (Neighbor Discovery requires hop-limit=255)
+nft add rule inet tether_unblock prerouting  iifname rndis0 \
+    ip6 nexthdr != ipv6-icmp ip6 hoplimit set ip6 hoplimit + 1
 ```
 
-**Important**: ICMPv6 is excluded because Neighbor Discovery Protocol (NDP)
-uses hop-limit=255 and must not be modified — otherwise IPv6 connectivity
-breaks entirely.
+> ⚠️ **ICMPv6 is excluded** because Neighbor Discovery Protocol uses
+> hop-limit=255 and must not be modified — otherwise IPv6 breaks entirely.
 
----
+#### Fallback: /proc values
 
-## 2. DUN (Dial-Up Networking) APN
-
-### How It Works
-
-Mobile carriers define two APNs (Access Point Names):
-- **Default APN**: Regular smartphone data (`internet`, `fast.t-mobile.com`, etc.)
-- **DUN APN**: Tethering-only data (`dun`, `pcweb.t-mobile.com`, etc.)
-
-Android checks the `tether_dun_required` property. If set to `1`, the phone
-routes tethered traffic through the DUN APN, which either:
-- Requires a separate tethering plan (most US carriers)
-- Is throttled to very low speeds
-- Is blocked entirely
-
-### Bypass Strategy
-
-Force all traffic through the default APN:
+If nftables is not available, the module sets the default TTL/HL via `/proc`:
 
 ```sh
-resetprop tether_dun_required 0
-settings put global tether_dun_required 0
+echo 64 > /proc/sys/net/ipv4/ip_default_ttl
+echo 64 > /proc/sys/net/ipv6/conf/all/hop_limit
+```
+
+This only affects packets originating from the phone itself, not tethered
+packets.  It is a partial mitigation.
+
+---
+
+### DUN APN (Dial-Up Networking)
+
+| Aspect | Detail |
+|---|---|
+| **OSI layer** | Layer 3 (routing decision via APN) |
+| **How it works** | Carriers define a separate APN for tethering (`dun`). Android routes tethered traffic through this DUN APN instead of the default data APN. The DUN APN is throttled, blocked, or requires a separate paid plan. |
+| **Module bypass** | `resetprop tether_dun_required 0` forces all traffic through the default APN |
+| **Settings bypass** | `settings put global tether_dun_required 0` (Pixel / AOSP) |
+
+```
+With DUN enforced:
+  Phone traffic → default APN (fast)        ✓
+  Tethered      → DUN APN (throttled/blocked) ✗
+
+After bypass:
+  All traffic   → default APN (fast)        ✓
 ```
 
 ---
 
-## 3. Tethering Provisioning / Entitlement Check
+## Layer 4 — Transport Layer
 
-### How It Works
+### TCP Stack Fingerprinting (Passive OS Detection)
 
-Android's `TetheringProvisioning` service (part of `NetworkStack`) sends an
-HTTP request to the carrier's provisioning server:
+| Aspect | Detail |
+|---|---|
+| **OSI layer** | Layer 4 (TCP headers) |
+| **Tools used** | p0f, proprietary carrier DPI appliances |
+| **How it works** | The carrier passively inspects TCP SYN packets to identify the originating OS by its TCP stack signature — initial TTL, TCP window size, option ordering, and flags. |
+| **Module bypass** | TTL normalization (Layer 3) corrects the initial TTL. For complete TCP fingerprint hiding, combine with WireGuard VPN. |
 
-```
-GET /tetheringCheck?msisdn=1234567890 HTTP/1.1
-Host: provisioning.carrier.com
-```
+**TCP fingerprint signatures by OS:**
 
-The carrier responds with `200 OK` (allowed) or `403 Forbidden` (blocked).
-On Android 12+, this uses the `ConnectivityService` entitlement API.
-
-When blocked, the system immediately disables the hotspot and shows a
-"Account not set up for tethering" notification.
-
-### Bypass Strategy
-
-```sh
-# Disable the provisioning check entirely
-resetprop net.tethering.noprovisioning true
-
-# Fake the entitlement check result
-resetprop tether_entitlement_check_state 0
-```
-
-On some carrier ROMs, these properties are read-only (`ro.*`). `resetprop`
-(Magisk/KernelSU) can override even read-only properties at runtime.
-
----
-
-## 4. HTTP User-Agent Inspection (DPI)
-
-### How It Works
-
-Some carriers (notably T-Mobile US, Vodafone, NTT Docomo) perform **Deep
-Packet Inspection (DPI)** on unencrypted HTTP traffic. They look for browser
-`User-Agent` headers that indicate desktop OS:
-
-```
-User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...  ← Desktop → BLOCKED
-User-Agent: Mozilla/5.0 (Linux; Android 13) ...             ← Mobile  → ALLOWED
-```
-
-### Bypass Strategy
-
-This method is increasingly irrelevant because:
-1. Most web traffic is now HTTPS (DPI can't see headers)
-2. HTTP/2 and HTTP/3 multiplex streams, making header inspection harder
-3. This module does NOT attempt User-Agent spoofing (iptables TTL bypass is
-   sufficient for 95%+ of carriers)
-
-If you specifically encounter User-Agent-based blocking, use a browser
-extension to spoof the mobile User-Agent string.
-
----
-
-## 5. TCP/IP Stack Fingerprinting
-
-### How It Works
-
-Advanced carriers (e.g., China Mobile, some European operators) use passive
-OS fingerprinting tools (like **p0f**) to identify the TCP stack of the
-originating device:
-
-| Signature | Windows | Linux (Android) | macOS/iOS |
+| Signature | Windows | Linux (Android) | macOS / iOS |
 |---|---|---|---|
 | Initial TTL | 128 | 64 | 64 |
-| TCP window size | 65535 | varies | 65535 |
-| TCP options order | MSS,NOP,WScale,NOP,NOP,TS | MSS,NOP,NOP,TS,NOP,WScale | MSS,NOP,WScale,NOP,NOP,TS |
+| TCP window | 65535 | varies | 65535 |
+| Options order | M,N,W,N,N,T | M,N,N,T,N,W | M,N,W,N,N,T |
 | Don't Fragment | sometimes | usually | always |
 
-If the TCP fingerprint says "Windows" but the subscriber's device is Android,
-the carrier flags it as tethering.
+> M=MSS, N=NOP, W=WindowScale, T=Timestamp
 
-### Bypass Strategy
-
-This is the hardest detection to bypass. TTL normalization (Layer 2) helps
-because the carrier sees TTL=64 instead of 127. The TCP window size is harder
-to fake, but it's rarely the sole detection method. Most carriers combine
-multiple signals, and TTL + DUN bypass is sufficient for the majority.
+A TCP SYN from a Windows laptop saying TTL=127 and window=65535 is trivially
+distinguishable from an Android phone saying TTL=64 and window=29200.  When
+TTL normalization sets TTL=64, the carrier sees TTL=64 even from tethered
+Windows devices — this removes one key signal.  Combined with WireGuard, all
+TCP headers are encrypted and invisible to the carrier.
 
 ---
 
-## 6. Hardware Tethering Offload (Pixel 6+ / QCOM IPA)
+## Layer 7 — Application Layer
 
-### How It Works
+### HTTP User-Agent Deep Packet Inspection (DPI)
 
-Modern chipsets (Google Tensor, Qualcomm Snapdragon 8 Gen 1+) use **IPA
-(IP Accelerator)** hardware to offload tethering traffic. Packets go:
+| Aspect | Detail |
+|---|---|
+| **OSI layer** | Layer 7 (HTTP headers) |
+| **How it works** | Carriers (T-Mobile US, Vodafone, NTT Docomo) inspect unencrypted HTTP `User-Agent` headers. Desktop browser signatures are flagged as tethering. |
+| **Why declining** | >90% of web traffic is now HTTPS. HTTP/2 and HTTP/3 multiplex streams, making header inspection harder. |
+| **Module bypass** | Not needed for HTTPS. For unencrypted HTTP, use WireGuard VPN (encrypts everything). |
 
 ```
-Modem → IPA hardware → Wi-Fi chip
-         ↑
-    (bypasses Linux netfilter completely!)
+HTTP (visible to DPI):
+  GET / HTTP/1.1
+  User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)  ← flagged!
+
+HTTPS (invisible):
+  TLS 1.3 encrypted — carrier sees nothing.
+
+WireGuard (invisible):
+  All packets are encrypted UDP — carrier sees only tunnel.
 ```
 
-When offload is active, **iptables rules have zero effect** because packets
-never traverse the Linux network stack. This is why many tethering bypass
-modules mysteriously "don't work" on Pixel 6/7/8.
+### SNI (Server Name Indication) Inspection
 
-### Bypass Strategy
+| Aspect | Detail |
+|---|---|
+| **OSI layer** | Layer 7 (TLS handshake) |
+| **How it works** | Even with HTTPS, the TLS `ClientHello` includes the destination domain in plaintext (SNI field). Carriers can flag connections to desktop-only services (Steam CDN, Windows Update, Battle.net). |
+| **Mitigation** | ECH (Encrypted Client Hello) in TLS 1.3 + DoH. WireGuard VPN hides all destinations. |
+
+### DNS Pattern Analysis
+
+| Aspect | Detail |
+|---|---|
+| **OSI layer** | Layer 7 (DNS queries) |
+| **How it works** | Carriers inspect DNS queries for desktop-application patterns (e.g., `client.steam.com`, `update.microsoft.com`). |
+| **Mitigation** | DNS-over-HTTPS (DoH) or DNS-over-TLS (DoT). WireGuard VPN routes all DNS through the tunnel. |
+
+---
+
+## Android Framework Layer (Outside OSI)
+
+Android adds its own tethering detection mechanisms that operate at the
+framework level, independent of the network stack.
+
+### Tethering Provisioning / Entitlement Check
+
+| Aspect | Detail |
+|---|---|
+| **How it works** | Android's `TetheringProvisioning` service sends an HTTP request to the carrier's provisioning server. If the carrier responds `403 Forbidden`, Android immediately disables the hotspot and shows "Account not set up for tethering." |
+| **Module bypass** | `resetprop net.tethering.noprovisioning true` — skips the check entirely |
+| | `resetprop tether_entitlement_check_state 0` — fakes a successful check |
+
+### Hardware Tethering Offload (Google Tensor / QCOM IPA)
+
+| Aspect | Detail |
+|---|---|
+| **Affected devices** | Google Pixel 6+, some Snapdragon 8 Gen 1+ devices |
+| **How it works** | The IPA (IP Accelerator) hardware routes tethered packets directly from modem to Wi-Fi, bypassing the Linux netfilter stack entirely. **nftables rules have zero effect** on offloaded traffic. |
+| **Module bypass** | `settings put global tether_offload_disabled 1` — forces all traffic through the CPU where nftables can process it |
+| **Trade-off** | ~5-10% higher CPU usage during tethering (imperceptible on modern devices) |
+
+```
+With offload ON:
+  Modem → IPA hardware → Wi-Fi chip    (nftables is bypassed ✗)
+
+With offload OFF:
+  Modem → CPU (nftables) → Wi-Fi chip  (nftables processes TTL/HL ✓)
+```
+
+### Carrier / OEM Property Checks
+
+Some carriers and OEMs add property-based tethering detection at the framework
+level. The module sets these properties to bypass all known variants:
 
 ```sh
-settings put global tether_offload_disabled 1
+resetprop tether_dun_required 0            # No separate DUN APN
+resetprop net.tethering.noprovisioning true # Skip provisioning
+resetprop tether_entitlement_check_state 0  # Fake entitlement OK
+resetprop ro.tether.denied false            # Carrier "denied" flag
+resetprop persist.sys.tether_data -1        # Some firmware checks
+resetprop sys.usb.tethering true            # Samsung USB tethering
 ```
 
-This forces all tethered traffic through the CPU's netfilter stack, where
-iptables TTL/HL rules can process it. Trade-off: ~5-10% higher CPU usage
-while tethering (usually imperceptible).
-
 ---
 
-## 7. Data Volume / Traffic Pattern Analysis
+## Summary: Detection Methods vs Module Coverage
 
-### How It Works
+| OSI Layer | Detection Method | Prevalence | Module Coverage |
+|---|---|---|---|
+| **Layer 3** | TTL / Hop Limit | ★★★★★ Primary | ✅ nftables `ip ttl set + 1` |
+| **Layer 3** | DUN APN routing | ★★★★☆ Common | ✅ `tether_dun_required=0` |
+| **Layer 4** | TCP fingerprinting | ★★☆☆☆ Rare | ⚠️ Partial (TTL norm + VPN) |
+| **Layer 7** | HTTP User-Agent DPI | ★★★☆☆ Declining | ✅ VPN (WireGuard) |
+| **Layer 7** | SNI inspection | ★★☆☆☆ Emerging | ✅ VPN (WireGuard) |
+| **Layer 7** | DNS patterns | ★★☆☆☆ Rare | ✅ DoH/DoT + VPN |
+| **Android** | Provisioning check | ★★★★☆ Common | ✅ `noprovisioning=true` |
+| **Android** | Hardware offload | ★★★★☆ Pixel/QCOM | ✅ `tether_offload_disabled=1` |
+| **Android** | OEM properties | ★★★☆☆ Varies | ✅ `resetprop` bypasses |
 
-Some carriers analyze traffic patterns at the network level:
-- **Volume**: Sudden spike to 50 GB/month → likely tethering
-- **Destination diversity**: Connections to CDNs, desktop update servers, etc.
-- **Protocol mix**: Desktop-only protocols (e.g., Steam, Battle.net)
-- **DNS queries**: Desktop application DNS patterns
+### Recommended Defense-in-Depth
 
-### Bypass Strategy
+```
+Layer 1:  resetprop properties     → OS/framework bypass
+Layer 2:  nftables TTL/HL +1       → network detection bypass
+Layer 3:  WireGuard VPN            → DPI/fingerprint defeat
+         (optional but strongest)
 
-This is outside the scope of a device-side module. Mitigations:
-- Use a VPN (obscures destination diversity)
-- Use DNS-over-HTTPS (obscures DNS patterns)
-- Spread usage across time (avoid sudden spikes)
-
----
-
-## Summary: Detection Methods and Countermeasures
-
-| Method | Prevalence | This Module Handles? |
-|---|---|---|
-| TTL / Hop Limit | ★★★★★ Very common | ✅ iptables TTL --ttl-inc 1 |
-| DUN APN | ★★★★☆ Common | ✅ tether_dun_required=0 |
-| Provisioning check | ★★★★☆ Common | ✅ noprovisioning=true, entitlement=0 |
-| HTTP User-Agent DPI | ★★★☆☆ Declining | ❌ (HTTPS makes this obsolete) |
-| TCP fingerprinting | ★★☆☆☆ Rare | ⚠️ Partial (TTL normalization helps) |
-| Hardware offload | ★★★★☆ Pixel 6+, QCOM | ✅ tether_offload_disabled=1 |
-| Traffic patterns | ★★☆☆☆ Rare | ❌ (needs VPN) |
+All 3 layers active = maximum protection.
+```

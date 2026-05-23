@@ -51,6 +51,14 @@ del_prop sys.tethering.simslot
 del_prop persist.vendor.cne.feature
 del_prop sys.tethering.offload_disabled
 
+# Remove nftables table if it exists
+nft delete table inet tether_unblock 2>/dev/null && \
+	log "INFO" "Removed nftables inet table"
+nft delete table ip tether_unblock_nat 2>/dev/null && \
+	log "INFO" "Removed nftables ip nat table"
+nft delete table ip6 tether_unblock_nat 2>/dev/null && \
+	log "INFO" "Removed nftables ip6 nat table"
+
 # Restore default TTL / HL (reset to kernel defaults)
 echo 64 > /proc/sys/net/ipv4/ip_default_ttl 2>/dev/null && \
 	log "INFO" "Restored IPv4 default TTL = 64"

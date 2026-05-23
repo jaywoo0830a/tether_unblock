@@ -60,9 +60,14 @@ log "INFO" "Checking kernel modules..."
 load_mod xt_ttl || log "WARN" "xt_ttl module not found"
 load_mod xt_HL  || log "WARN" "xt_HL module not found"
 
-# ---- detect iptables & interfaces ----
-detect_iptables
+# ---- detect nftables (required on Android 12+) ----
+detect_nftables
+if ! ${HAS_NFTABLES}; then
+	log "ERROR" "nftables not available — tethering bypass cannot apply rules"
+	log "ERROR" "This module requires Android 12+ with nftables support."
+fi
 
+# ---- detect tethering interfaces ----
 INTERFACES=$(detect_interfaces)
 if [ -z "${INTERFACES}" ]; then
 	INTERFACES="${FALLBACK_INTERFACES}"
@@ -70,40 +75,34 @@ if [ -z "${INTERFACES}" ]; then
 fi
 log "INFO" "Target interfaces: ${INTERFACES}"
 
-# ---- apply iptables TTL / HL rules ----
-log "INFO" "Applying iptables rules..."
-dump_iptables_state "BEFORE"
+# ---- apply TTL / HL rules via nftables ----
+log "INFO" "Applying nftables rules..."
+nft_init
+dump_nftables_state "BEFORE"
 
 for IFACE in ${INTERFACES}; do
-	if ${HAS_IPTABLES}; then
-		add_rule iptables  PREROUTING  -i "${IFACE}" -j TTL --ttl-inc 1
-		add_rule iptables  POSTROUTING -o "${IFACE}" -j TTL --ttl-inc 1
-	fi
-	if ${HAS_IP6TABLES}; then
-		add_rule ip6tables PREROUTING  ! -p icmpv6 -i "${IFACE}" -j HL --hl-inc 1
-		add_rule ip6tables POSTROUTING ! -p icmpv6 -o "${IFACE}" -j HL --hl-inc 1
-	fi
+	nft_add_rule inet prerouting \
+		iifname "${IFACE}" ip ttl set ip ttl + 1
+	nft_add_rule inet postrouting \
+		oifname "${IFACE}" ip ttl set ip ttl + 1
+
+	nft_add_rule inet prerouting \
+		iifname "${IFACE}" ip6 nexthdr != ipv6-icmp \
+		ip6 hoplimit set ip6 hoplimit + 1
+	nft_add_rule inet postrouting \
+		oifname "${IFACE}" ip6 nexthdr != ipv6-icmp \
+		ip6 hoplimit set ip6 hoplimit + 1
 done
 
-dump_iptables_state "AFTER"
+dump_nftables_state "AFTER"
 
-# ---- fallback: set default TTL / HL via /proc ----
-TTL_READY=false
-HL_READY=false
-${HAS_IPTABLES}  && grep -q TTL /proc/net/ip_tables_targets  2>/dev/null && TTL_READY=true
-${HAS_IP6TABLES} && grep -q HL  /proc/net/ip6_tables_targets 2>/dev/null && HL_READY=true
-
-if ! ${TTL_READY}; then
-	echo 64 > /proc/sys/net/ipv4/ip_default_ttl 2>/dev/null && \
-		log "WARN" "Fallback: IPv4 default TTL = 64"
-fi
-if ! ${HL_READY}; then
-	for path in /proc/sys/net/ipv6/conf/all/hop_limit \
-	            /proc/sys/net/ipv6/conf/default/hop_limit; do
-		[ -f "${path}" ] && echo 64 > "${path}" 2>/dev/null && \
-			log "WARN" "Fallback: IPv6 hop_limit = 64 (${path})"
-	done
-fi
+# ---- /proc fallback (if nftables somehow failed) ----
+# nftables handles TTL natively, but set /proc defaults as safety net.
+echo 64 > /proc/sys/net/ipv4/ip_default_ttl 2>/dev/null || true
+for path in /proc/sys/net/ipv6/conf/all/hop_limit \
+            /proc/sys/net/ipv6/conf/default/hop_limit; do
+	[ -f "${path}" ] && echo 64 > "${path}" 2>/dev/null || true
+done
 
 # ---- optional: VPN passthrough (WireGuard) ----
 # Auto-detects wg* interfaces and routes tethered traffic through
@@ -124,27 +123,26 @@ fi
 if [ -n "${VPN_IFACE}" ] && [ -d "/sys/class/net/${VPN_IFACE}" ]; then
 	log "INFO" "VPN interface detected: ${VPN_IFACE} -- enabling passthrough"
 
-	if ${HAS_IPTABLES}; then
+	if ${HAS_NFTABLES}; then
+		# ---- nftables VPN path ----
 		for IFACE in ${INTERFACES}; do
-			add_rule iptables FORWARD -t filter \
-				-i "${IFACE}" -o "${VPN_IFACE}" -j ACCEPT
-			add_rule iptables FORWARD -t filter \
-				-i "${VPN_IFACE}" -o "${IFACE}" -j ACCEPT
-			add_rule iptables POSTROUTING -t nat \
-				-o "${VPN_IFACE}" -j MASQUERADE
+			nft_add_rule inet forward \
+				iifname "${IFACE}" oifname "${VPN_IFACE}" accept
+			nft_add_rule inet forward \
+				iifname "${VPN_IFACE}" oifname "${IFACE}" accept
 		done
-	fi
+		nft_add_nat_rule ip \
+			oifname "${VPN_IFACE}" masquerade
 
-	if ${HAS_IP6TABLES}; then
+		# IPv6 NAT
 		if [ -f "${VPN_CFG}" ] && grep -q '^VPN_NO_IPV6=1' "${VPN_CFG}"; then
 			log "INFO" "IPv6 VPN forwarding disabled (VPN_NO_IPV6=1)"
 		else
-			for IFACE in ${INTERFACES}; do
-				add_rule ip6tables FORWARD -t filter \
-					-i "${IFACE}" -o "${VPN_IFACE}" -j ACCEPT
-				add_rule ip6tables FORWARD -t filter \
-					-i "${VPN_IFACE}" -o "${IFACE}" -j ACCEPT
-			done
+			nft add table ip6 tether_unblock_nat 2>/dev/null || true
+			nft add chain ip6 tether_unblock_nat postrouting \
+				'{ type nat hook postrouting priority srcnat; }' 2>/dev/null || true
+			nft_add_nat_rule ip6 \
+				oifname "${VPN_IFACE}" masquerade
 		fi
 	fi
 
