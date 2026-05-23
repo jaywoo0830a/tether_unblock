@@ -319,7 +319,7 @@ run_mock_test "HL --hl-inc value is 1" \
 	"grep -q -- '--hl-inc 1' '${PROJECT_DIR}/service.sh'"
 
 run_mock_test "iptables rules use -w (xtables lock)" \
-	"grep -q -- '-w.*-t' '${PROJECT_DIR}/service.sh'"
+	"grep -q -- '-w.*-t' '${PROJECT_DIR}/common.sh'"
 
 banner "--- Fallback /proc values ---"
 
@@ -348,8 +348,8 @@ banner "--- VPN passthrough (WireGuard) ---"
 run_mock_test "service.sh detects wg* interfaces" \
 	"grep -q '/sys/class/net/wg\*' '${PROJECT_DIR}/service.sh'"
 
-run_mock_test "service.sh reads VPN config file" \
-	"grep -q 'tether_unblock_vpn.conf' '${PROJECT_DIR}/service.sh'"
+run_mock_test "VPN config file referenced" \
+	"grep -q 'tether_unblock_vpn.conf' '${PROJECT_DIR}/common.sh'"
 
 run_mock_test "VPN section has FORWARD rules" \
 	"grep -q 'FORWARD.*-t filter' '${PROJECT_DIR}/service.sh'"
@@ -364,27 +364,27 @@ run_mock_test "VPN section respects VPN_NO_IPV6" \
 	"grep -q 'VPN_NO_IPV6=1' '${PROJECT_DIR}/service.sh'"
 
 run_mock_test "add_rule function supports -t table" \
-	"grep -q 'table=' '${PROJECT_DIR}/service.sh'"
+	"grep -q 'table=' '${PROJECT_DIR}/common.sh'"
 
 banner "--- Enhanced logging ---"
 
 run_mock_test "log function uses timestamp format" \
-	"grep -q 'date.*%H:%M' '${PROJECT_DIR}/service.sh'"
+	"grep -q 'date.*%H:%M' '${PROJECT_DIR}/common.sh'"
 
 run_mock_test "DEBUG messages are gated on LOG_LEVEL" \
-	"grep -q 'LOG_LEVEL.*DEBUG' '${PROJECT_DIR}/service.sh'"
+	"grep -q 'LOG_LEVEL.*DEBUG' '${PROJECT_DIR}/common.sh'"
 
 run_mock_test "system info dump includes device model" \
-	"grep -q 'ro.product.model' '${PROJECT_DIR}/service.sh'"
+	"grep -q 'ro.product.model' '${PROJECT_DIR}/common.sh'"
 
 run_mock_test "log file is rotated on each boot" \
-	"grep -q 'tail.*-n 200.*LOG_FILE' '${PROJECT_DIR}/service.sh'"
+	"grep -q 'tail.*-n 200.*LOG_FILE' '${PROJECT_DIR}/common.sh'"
 
 run_mock_test "failed property set logs as ERROR" \
-	"grep -q 'ERROR.*FAILED to set' '${PROJECT_DIR}/service.sh'"
+	"grep -q 'ERROR.*FAILED to set' '${PROJECT_DIR}/common.sh'"
 
 run_mock_test "failed iptables rule logs as ERROR" \
-	"grep -q 'ERROR.*FAILED' '${PROJECT_DIR}/service.sh'"
+	"grep -q 'ERROR.*FAILED' '${PROJECT_DIR}/common.sh'"
 
 # ----------------------------------------------------------
 printf '\n'

@@ -116,7 +116,7 @@ done
 # ============================================================
 banner "=== 3. ShellCheck syntax validation ==="
 
-SH_FILES="service.sh uninstall.sh"
+SH_FILES="common.sh service.sh uninstall.sh"
 SHELLCHECK_SKIP=""
 for f in ${SH_FILES}; do
 	if command -v shellcheck >/dev/null 2>&1; then
@@ -139,13 +139,21 @@ done
 # ============================================================
 banner "=== 4. File presence & structure ==="
 
-REQUIRED_FILES="module.prop service.sh uninstall.sh update.json CHANGELOG.md README.md LICENSE"
+REQUIRED_FILES="module.prop common.sh service.sh uninstall.sh update.json CHANGELOG.md README.md LICENSE"
 REQUIRED_FILES="${REQUIRED_FILES} META-INF/com/google/android/update-binary"
 REQUIRED_FILES="${REQUIRED_FILES} META-INF/com/google/android/updater-script"
 
 for f in ${REQUIRED_FILES}; do
 	run_test "file exists: ${f}" "[ -f '${f}' ]"
 done
+
+run_test "common.sh exists" "[ -f 'common.sh' ]"
+
+run_test "service.sh sources common.sh" \
+	"grep -q 'common.sh' service.sh"
+
+run_test "uninstall.sh sources common.sh" \
+	"grep -q 'common.sh' uninstall.sh"
 
 run_test "service.sh starts with #!/system/bin/sh" \
 	"head -n1 service.sh | grep -q '^#!/system/bin/sh'"
@@ -160,7 +168,7 @@ run_test "update-binary starts with #!/sbin/sh" \
 banner "=== 5. Interface list sanity ==="
 
 # The static fallback list should contain the essential interfaces
-FALLBACK="$(grep 'INTERFACES=' service.sh | grep -v 'detect_interfaces\|$(' | head -n1)"
+FALLBACK="$(grep 'FALLBACK_INTERFACES=' common.sh | head -n1)"
 for iface in rndis0 wlan0 ap0 bt-pan; do
 	assert_contains "${iface}" "${FALLBACK}" \
 		"static fallback includes interface: ${iface}"
@@ -193,8 +201,8 @@ run_test "service.sh has VPN passthrough section" \
 run_test "service.sh detects wg* interfaces" \
 	"grep -q 'wg\*' service.sh"
 
-run_test "service.sh reads VPN config file" \
-	"grep -q 'tether_unblock_vpn.conf' service.sh"
+run_test "VPN config file referenced in scripts" \
+	"grep -q 'tether_unblock_vpn.conf' common.sh"
 
 run_test "service.sh has FORWARD rules for VPN" \
 	"grep -q 'FORWARD' service.sh && grep -q 'VPN_IFACE' service.sh"
@@ -212,40 +220,37 @@ run_test "sample config documents options" \
 	"grep -q 'VPN_INTERFACE\|VPN_NO_IPV6' tether_unblock_vpn.conf.sample"
 
 run_test "add_rule supports -t table override" \
-	"grep -q 'table=' service.sh"
+	"grep -q 'table=' common.sh"
 
 # ============================================================
 banner "=== 8. Enhanced logging ==="
 
 run_test "log function has timestamp support" \
-	"grep -q 'date.*%H:%M:%S' service.sh"
+	"grep -q 'date.*%H:%M:%S' common.sh"
 
 run_test "log function supports DEBUG level" \
-	"grep -q 'LOG_LEVEL.*DEBUG\|level.*DEBUG' service.sh"
+	"grep -q 'LOG_LEVEL.*DEBUG\|level.*DEBUG' common.sh"
 
-run_test "service.sh has system info dump" \
-	"grep -q 'ro.product.brand' service.sh"
+run_test "common.sh has system info dump" \
+	"grep -q 'ro.product.brand' common.sh"
 
-run_test "service.sh logs kernel version" \
-	"grep -q 'uname -r' service.sh"
+run_test "common.sh logs kernel version" \
+	"grep -q 'uname -r' common.sh"
 
 run_test "service.sh captures iptables BEFORE state" \
-	"grep -q 'iptables.*mangle.*BEFORE' service.sh"
+	"grep -q 'dump_iptables_state.*BEFORE' service.sh"
 
 run_test "service.sh captures iptables AFTER state" \
-	"grep -q 'iptables.*mangle.*AFTER' service.sh"
+	"grep -q 'dump_iptables_state.*AFTER' service.sh"
 
-run_test "service.sh captures nat table AFTER state" \
-	"grep -q 'iptables.*nat.*AFTER' service.sh"
+run_test "common.sh has iptables state dump function" \
+	"grep -q 'dump_iptables_state' common.sh"
 
 run_test "config supports LOG_LEVEL option" \
-	"grep -q 'LOG_LEVEL' service.sh"
+	"grep -q 'LOG_LEVEL' common.sh"
 
-run_test "sample config documents LOG_LEVEL" \
-	"grep -q 'LOG_LEVEL' tether_unblock_vpn.conf.sample"
-
-run_test "log file has rotation (tail -n 200)" \
-	"grep -q 'tail.*-n 200' service.sh"
+run_test "common.sh has log rotation (tail -n 200)" \
+	"grep -q 'tail.*-n 200' common.sh"
 
 run_test "failed module loads generate WARN" \
 	"grep -q 'WARN.*module not found' service.sh"

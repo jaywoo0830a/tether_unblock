@@ -1,6 +1,10 @@
 # Changelog
 
 ## v2.2
+- **Refactored into shared `common.sh` library**: `log()`, `find_resetprop()`,
+  `set_prop()`, `del_prop()`, `add_rule()`, `detect_interfaces()`, `load_mod()`,
+  `detect_iptables()`, `dump_system_info()`, `dump_iptables_state()` extracted
+  from `service.sh` and `uninstall.sh` — eliminates duplication, easier to maintain
 - **Optional WireGuard VPN passthrough**: auto-detects `wg*` interfaces and
   routes tethered traffic through the VPN tunnel — completely defeats DPI,
   TCP fingerprinting, and User-Agent inspection at the carrier level
