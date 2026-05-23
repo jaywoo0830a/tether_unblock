@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.2
+- Fix "This zip is not a Magisk module" error — `update-binary` missing execute
+  permission in zip; add `chmod +x` and `zip -X` to Makefile
+- Revert `update-binary` to official `module_installer.sh` (custom logic is
+  overwritten by Magisk app per official docs)
+- Remove non-ASCII characters (em dash) from all shell scripts for compatibility
+
 ## v2.2
 - **Refactored into shared `common.sh` library**: `log()`, `find_resetprop()`,
   `set_prop()`, `del_prop()`, `add_rule()`, `detect_interfaces()`, `load_mod()`,
