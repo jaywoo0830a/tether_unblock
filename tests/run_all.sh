@@ -248,9 +248,6 @@ run_test "config supports LOG_LEVEL option" \
 run_test "common.sh has log rotation (tail -n 200)" \
 	"grep -q 'tail.*-n 200' common.sh"
 
-run_test "failed module loads generate WARN" \
-	"grep -q 'WARN.*module not found' service.sh"
-
 # ============================================================
 banner "=== 8. nftables support ==="
 

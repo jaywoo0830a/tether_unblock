@@ -160,6 +160,9 @@ nft_init() {
 	nft add table ip tether_unblock_nat
 	nft add chain ip tether_unblock_nat postrouting \
 		'{ type nat hook postrouting priority srcnat; }'
+	nft add table ip6 tether_unblock_nat
+	nft add chain ip6 tether_unblock_nat postrouting \
+		'{ type nat hook postrouting priority srcnat; }'
 
 	log "INFO" "nftables: initialised"
 }

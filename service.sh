@@ -55,16 +55,13 @@ fi
 set_prop sys.tethering.offload_disabled         1         2>/dev/null
 set_prop persist.vendor.cne.feature             0         2>/dev/null
 
-# ---- load kernel modules ----
-log "INFO" "Checking kernel modules..."
-load_mod xt_ttl || log "WARN" "xt_ttl module not found"
-load_mod xt_HL  || log "WARN" "xt_HL module not found"
-
 # ---- detect nftables (required on Android 12+) ----
 detect_nftables
 if ! ${HAS_NFTABLES}; then
 	log "ERROR" "nftables not available — tethering bypass cannot apply rules"
 	log "ERROR" "This module requires Android 12+ with nftables support."
+	log "INFO" "===== Service aborted (no nftables) ====="
+	exit 0
 fi
 
 # ---- detect tethering interfaces ----
@@ -76,6 +73,7 @@ fi
 log "INFO" "Target interfaces: ${INTERFACES}"
 
 # ---- apply TTL / HL rules via nftables ----
+if ${HAS_NFTABLES}; then
 log "INFO" "Applying nftables rules..."
 nft_init
 dump_nftables_state "BEFORE"
@@ -95,8 +93,9 @@ for IFACE in ${INTERFACES}; do
 done
 
 dump_nftables_state "AFTER"
+fi
 
-# ---- /proc fallback (if nftables somehow failed) ----
+# ---- /proc fallback (safety net) ----
 # nftables handles TTL natively, but set /proc defaults as safety net.
 echo 64 > /proc/sys/net/ipv4/ip_default_ttl 2>/dev/null || true
 for path in /proc/sys/net/ipv6/conf/all/hop_limit \
@@ -138,9 +137,6 @@ if [ -n "${VPN_IFACE}" ] && [ -d "/sys/class/net/${VPN_IFACE}" ]; then
 		if [ -f "${VPN_CFG}" ] && grep -q '^VPN_NO_IPV6=1' "${VPN_CFG}"; then
 			log "INFO" "IPv6 VPN forwarding disabled (VPN_NO_IPV6=1)"
 		else
-			nft add table ip6 tether_unblock_nat 2>/dev/null || true
-			nft add chain ip6 tether_unblock_nat postrouting \
-				'{ type nat hook postrouting priority srcnat; }' 2>/dev/null || true
 			nft_add_nat_rule ip6 \
 				oifname "${VPN_IFACE}" masquerade
 		fi
