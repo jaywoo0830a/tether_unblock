@@ -9,7 +9,7 @@ all: $(ZIP)
 zip: $(ZIP)
 
 %.zip: clean
-	zip -r9 $(ZIP) . -x $(MODNAME)-*.zip LICENSE CLAUDE.md README.md CHANGELOG.md CHECKLIST.md update.json .gitignore .gitattributes Makefile /hooks/* /.git* /.claude*
+	zip -r9 $(ZIP) . -x $(MODNAME)-*.zip LICENSE CLAUDE.md README.md CHANGELOG.md CHECKLIST.md update.json .gitignore .gitattributes Makefile /hooks/* /tests/* /docs/* /.git* /.claude*
 
 install: $(ZIP)
 	adb push $(ZIP) /sdcard/
@@ -22,7 +22,10 @@ clean:
 setup:
 	ln -sf ../../hooks/pre-commit .git/hooks/pre-commit
 
+test:
+	./tests/run_all.sh
+
 update:
 	curl -L https://raw.githubusercontent.com/topjohnwu/Magisk/master/scripts/module_installer.sh > META-INF/com/google/android/update-binary
 
-.PHONY: all zip install clean setup update
+.PHONY: all zip install clean setup test update

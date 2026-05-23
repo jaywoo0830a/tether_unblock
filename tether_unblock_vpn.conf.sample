@@ -1,0 +1,22 @@
+# Tether Unblock — configuration
+# Copy this file to /data/local/tmp/tether_unblock_vpn.conf
+# and edit as needed.
+#
+# The module auto-detects wg* interfaces by default,
+# so most users do NOT need this config file at all.
+# Only create it if you need to override defaults.
+
+# ---- Logging ----
+# Set to DEBUG to enable verbose logging (system info dump,
+# interface list, iptables before/after state capture).
+# Default: INFO (timestamps + key events only)
+#LOG_LEVEL=DEBUG
+
+# ---- VPN passthrough ----
+# Force a specific WireGuard interface (default: auto-detect wg*)
+#VPN_INTERFACE=wg0
+
+# Skip IPv6 forwarding rules.
+# Enable this if your VPN server does not support IPv6
+# (common with budget VPS providers).
+#VPN_NO_IPV6=1

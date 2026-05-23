@@ -20,7 +20,17 @@ Master branch:
 
 - Magisk v20.4+
 - KernelSU (uses `resetprop` which KernelSU provides in recent versions)
+- APatch
+- **Google Pixel**: Pixel 6+ (Tensor) devices use hardware tethering offload
+  (IPA) which bypasses iptables. This module automatically disables offload so
+  TTL rules take effect. A reboot is required after installation.
+
+### Supported devices
+Tested on Google Pixel 2–8 series, Samsung Galaxy, Xiaomi, OnePlus, and most
+AOSP-based ROMs. If your device has a different tethering interface name it
+will be auto-detected via `/sys/class/net/`.
 
 ## Support
 
+- [Technical Documentation](docs/README.md) — how tethering detection works, manufacturer/carrier guides
 - [Telegram](https://t.me/joinchat/GsJfBBaxozXvVkSJhm0IOQ)
