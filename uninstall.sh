@@ -1,12 +1,12 @@
 #!/system/bin/sh
-# Tether Unblock — uninstall script
+# Tether Unblock -- uninstall script
 # Cleans up all properties set by the module.
 
 SCRIPT_DIR="$(dirname "$0")"
 [ -n "${MODDIR:-}" ] && SCRIPT_DIR="${MODDIR}"
 . "${SCRIPT_DIR}/common.sh"
 
-# Suppress log spam during uninstall — only log to file, not logcat.
+# Suppress log spam during uninstall -- only log to file, not logcat.
 log() {
 	local level="$1"; shift
 	local ts

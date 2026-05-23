@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Tether Unblock — service script
+# Tether Unblock -- service script
 # Runs at late_start service boot stage.
 # Compatible with Magisk v20.4+, KernelSU, and APatch.
 
@@ -66,7 +66,7 @@ detect_iptables
 INTERFACES=$(detect_interfaces)
 if [ -z "${INTERFACES}" ]; then
 	INTERFACES="${FALLBACK_INTERFACES}"
-	log "WARN" "No interfaces detected — using static fallback list"
+	log "WARN" "No interfaces detected -- using static fallback list"
 fi
 log "INFO" "Target interfaces: ${INTERFACES}"
 
@@ -122,7 +122,7 @@ if [ -z "${VPN_IFACE}" ]; then
 fi
 
 if [ -n "${VPN_IFACE}" ] && [ -d "/sys/class/net/${VPN_IFACE}" ]; then
-	log "INFO" "VPN interface detected: ${VPN_IFACE} — enabling passthrough"
+	log "INFO" "VPN interface detected: ${VPN_IFACE} -- enabling passthrough"
 
 	if ${HAS_IPTABLES}; then
 		for IFACE in ${INTERFACES}; do

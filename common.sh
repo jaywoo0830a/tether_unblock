@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Tether Unblock — shared library
+# Tether Unblock -- shared library
 # Source this from service.sh, uninstall.sh, or any module script.
 #
 # Provides: logging, resetprop detection, property helpers,
@@ -58,7 +58,7 @@ find_resetprop() {
 	elif command -v resetprop >/dev/null 2>&1; then
 		RESETPROP=resetprop
 	else
-		log "WARN" "resetprop not found — falling back to setprop"
+		log "WARN" "resetprop not found -- falling back to setprop"
 		RESETPROP=setprop
 	fi
 	log "INFO" "Using resetprop: ${RESETPROP}"
